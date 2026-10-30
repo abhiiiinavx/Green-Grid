@@ -1,0 +1,19 @@
+{
+  "name": "green-grid-root",
+  "version": "1.0.0",
+  "description": "Green Grid - Smart Energy Management Platform",
+  "scripts": {
+    "dev:backend": "npm.cmd --prefix backend run dev",
+    "dev:frontend": "npm.cmd --prefix frontend run dev",
+    "dev:ai": "python ai-service/main.py",
+    "prisma:generate": "npm.cmd --prefix backend run prisma:generate",
+    "prisma:push": "npm.cmd --prefix backend run prisma:push",
+    "prisma:seed": "npm.cmd --prefix backend run prisma:seed",
+    "test:backend": "npm.cmd --prefix backend run test",
+    "build:frontend": "npm.cmd --prefix frontend run build",
+    "build:backend": "npm.cmd --prefix backend run build"
+  },
+  "keywords": ["energy", "smart-grid", "iot", "analytics", "sustainability", "solar", "battery"],
+  "author": "Green Grid Team",
+  "license": "ISC"
+}

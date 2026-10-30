@@ -1,0 +1,327 @@
+// Green Grid - Prisma Database Schema
+// Production-quality relational data model for Smart Energy Management
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "../backend/node_modules/.prisma/client"
+}
+
+model User {
+  id              String           @id @default(uuid())
+  email           String           @unique
+  passwordHash    String
+  name            String
+  role            String           @default("USER") // "USER" | "ADMIN"
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+  updatedAt       DateTime         @updatedAt
+
+  profile         UserProfile?
+  refreshTokens   RefreshToken[]
+  appliances      Appliance[]
+  energyReadings  EnergyReading[]
+  consumptions    EnergyConsumption[]
+  forecasts       EnergyForecast[]
+  recommendations EnergyRecommendation[]
+  alerts          EnergyAlert[]
+  goals           EnergyGoal[]
+  budgets         EnergyBudget[]
+  solarSystem     SolarSystem?
+  battery         Battery?
+  tariffs         ElectricityTariff[]
+  notifications   Notification[]
+  auditLogs       AuditLog[]
+
+  @@index([email])
+}
+
+model RefreshToken {
+  id          String    @id @default(uuid())
+  token       String    @unique
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt   DateTime
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  @@index([userId])
+  @@index([token])
+}
+
+model UserProfile {
+  id                  String   @id @default(uuid())
+  userId              String   @unique
+  user                User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  phone               String?
+  location            String   @default("Bengaluru, India")
+  userType            String   @default("HOME") // "HOME" | "HOSTEL" | "OFFICE" | "SMALL_BUSINESS" | "CAMPUS"
+  currency            String   @default("INR") // "INR" | "USD" | "EUR"
+  monthlyBudget       Float    @default(3500)
+  energyGoalKwh       Float    @default(250)
+  carbonGoalReduction Float    @default(15) // percentage reduction goal
+  hasSolar            Boolean  @default(true)
+  hasBattery          Boolean  @default(true)
+  isOnboarded         Boolean  @default(false)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Appliance {
+  id               String                 @id @default(uuid())
+  userId           String
+  user             User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name             String
+  category         String                 @default("OTHER") // "COOLING" | "HEATING" | "LIGHTING" | "KITCHEN" | "ELECTRONICS" | "APPLIANCES" | "HEAVY_MACHINERY" | "OTHER"
+  powerRatingWatts Float                  @default(1000)
+  isSmart          Boolean                @default(true)
+  isOn             Boolean                @default(false)
+  priority         String                 @default("MEDIUM") // "HIGH" | "MEDIUM" | "LOW"
+  room             String                 @default("Living Room")
+  dailyAvgHours    Float                  @default(4)
+  scheduleOn       String?                // "HH:mm" e.g. "18:00"
+  scheduleOff      String?                // "HH:mm" e.g. "06:00"
+  todayKwh         Float                  @default(0)
+  monthlyEstCost   Float                  @default(0)
+  createdAt        DateTime               @default(now())
+  updatedAt        DateTime               @updatedAt
+
+  readings         EnergyReading[]
+  consumptions     EnergyConsumption[]
+  recommendations  EnergyRecommendation[]
+  alerts           EnergyAlert[]
+
+  @@index([userId])
+  @@index([category])
+}
+
+model EnergyReading {
+  id                 String     @id @default(uuid())
+  userId             String
+  user               User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applianceId        String?
+  appliance          Appliance? @relation(fields: [applianceId], references: [id], onDelete: SetNull)
+  timestamp          DateTime   @default(now())
+  activePowerKw      Float      // instantaneous active power
+  voltage            Float      @default(230.0) // V
+  current            Float      @default(5.2)   // A
+  frequency          Float      @default(50.0)  // Hz
+  powerFactor        Float      @default(0.97)  // 0.0 - 1.0
+  energyConsumedKwh  Float      @default(0)     // aggregate delta
+  solarGenerationKw  Float      @default(0)
+  gridDrawKw         Float      @default(0)
+  gridExportKw       Float      @default(0)
+  batterySocPercent  Float      @default(0)
+  batteryPowerKw     Float      @default(0)     // positive = charging, negative = discharging
+  isSimulated        Boolean    @default(true)
+
+  @@index([userId, timestamp])
+  @@index([applianceId])
+}
+
+model EnergyConsumption {
+  id          String     @id @default(uuid())
+  userId      String
+  user        User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applianceId String?
+  appliance   Appliance? @relation(fields: [applianceId], references: [id], onDelete: SetNull)
+  date        String     // YYYY-MM-DD
+  hour        Int?       // 0-23 if hourly rollup
+  totalKwh    Float      @default(0)
+  cost        Float      @default(0)
+  solarKwh    Float      @default(0)
+  gridKwh     Float      @default(0)
+  peakKwh     Float      @default(0)
+  offPeakKwh  Float      @default(0)
+  carbonKg    Float      @default(0)
+
+  @@index([userId, date])
+  @@index([userId, applianceId])
+}
+
+model EnergyForecast {
+  id             String   @id @default(uuid())
+  userId         String
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  forecastDate   String   // YYYY-MM-DD or YYYY-MM-DD HH:00
+  forecastType   String   // "HOURLY" | "DAILY" | "MONTH_END_BILL"
+  predictedKwh   Float
+  predictedCost  Float
+  confidenceLow  Float
+  confidenceHigh Float
+  baselineKwh    Float
+  modelVersion   String   @default("rf-arima-v1.2")
+  createdAt      DateTime @default(now())
+
+  @@index([userId, forecastDate])
+}
+
+model EnergyRecommendation {
+  id                         String     @id @default(uuid())
+  userId                     String
+  user                       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applianceId                String?
+  appliance                  Appliance? @relation(fields: [applianceId], references: [id], onDelete: SetNull)
+  title                      String
+  problem                    String
+  whyItMatters               String
+  suggestedAction            String
+  impactLevel                String     @default("MEDIUM") // "HIGH" | "MEDIUM" | "QUICK_WIN"
+  potentialMonthlySavingsKwh Float      @default(0)
+  potentialMonthlySavingsCost Float     @default(0)
+  difficulty                 String     @default("EASY") // "EASY" | "MODERATE" | "ADVANCED"
+  category                   String     @default("BEHAVIORAL") // "BEHAVIORAL" | "APPLIANCE" | "TARIFF" | "SOLAR"
+  isDismissed                Boolean    @default(false)
+  isApplied                  Boolean    @default(false)
+  createdAt                  DateTime   @default(now())
+
+  @@index([userId, isDismissed])
+}
+
+model EnergyAlert {
+  id             String     @id @default(uuid())
+  userId         String
+  user           User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+  applianceId    String?
+  appliance      Appliance? @relation(fields: [applianceId], references: [id], onDelete: SetNull)
+  title          String
+  message        String
+  alertType      String     // "HIGH_CONSUMPTION" | "UNUSUAL_USAGE" | "BUDGET_THRESHOLD" | "APPLIANCE_LEFT_ON" | "PREDICTED_BILL_SPIKE" | "SOLAR_DROP" | "BATTERY_LOW"
+  severity       String     @default("WARNING") // "INFO" | "WARNING" | "CRITICAL"
+  isRead         Boolean    @default(false)
+  isDismissed    Boolean    @default(false)
+  metricValue    Float?
+  thresholdValue Float?
+  createdAt      DateTime   @default(now())
+
+  @@index([userId, isRead])
+}
+
+model EnergyGoal {
+  id           String   @id @default(uuid())
+  userId       String
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title        String
+  goalType     String   // "MONTHLY_KWH" | "MONTHLY_COST" | "CARBON_REDUCTION" | "SOLAR_SELF_CONSUMPTION"
+  targetValue  Float
+  currentValue Float    @default(0)
+  unit         String   // "kWh" | "INR" | "%" | "kg"
+  startDate    DateTime @default(now())
+  endDate      DateTime
+  status       String   @default("ON_TRACK") // "ON_TRACK" | "AT_RISK" | "BEHIND" | "ACHIEVED"
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model EnergyBudget {
+  id                    String   @id @default(uuid())
+  userId                String
+  user                  User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  month                 Int      // 1-12
+  year                  Int      // e.g. 2026
+  budgetAmount          Float    // currency amount e.g. ₹3500
+  currentSpent          Float    @default(0)
+  projectedSpent        Float    @default(0)
+  alertThresholdPercent Float    @default(85)
+  createdAt             DateTime @default(now())
+  updatedAt             DateTime @updatedAt
+
+  @@unique([userId, month, year])
+  @@index([userId])
+}
+
+model SolarSystem {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  capacityKw           Float    @default(4.5)
+  panelCount           Int      @default(12)
+  inverterModel        String   @default("SunGrow Hybrid SG5.0RS")
+  installDate          DateTime @default(now())
+  orientation          String   @default("South-Facing")
+  tiltAngle            Float    @default(15.0)
+  peakGenerationKw     Float    @default(4.2)
+  todayGenerationKwh   Float    @default(14.8)
+  lifetimeGenerationKwh Float   @default(3840.0)
+  isActive             Boolean  @default(true)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model Battery {
+  id                   String   @id @default(uuid())
+  userId               String   @unique
+  user                 User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  capacityKwh          Float    @default(10.0)
+  currentChargePercent Float    @default(78.0)
+  maxChargeRateKw      Float    @default(3.3)
+  maxDischargeRateKw   Float    @default(3.3)
+  state                String   @default("CHARGING") // "CHARGING" | "DISCHARGING" | "IDLE" | "STANDBY"
+  healthPercent        Float    @default(96.0)
+  backupHoursEst       Float    @default(6.5)
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
+}
+
+model ElectricityTariff {
+  id                 String   @id @default(uuid())
+  userId             String
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name               String   @default("Standard Residential Slab Tariff")
+  type               String   @default("SLAB") // "FLAT" | "SLAB" | "TIME_OF_USE"
+  baseRatePerKwh     Float    @default(6.5) // default flat rate
+  fixedMonthlyCharge Float    @default(120.0)
+  taxPercent         Float    @default(9.0)
+  // Slab details (e.g. 0-100 kWh @ 4.75, 101-300 kWh @ 6.50, 301+ @ 8.25)
+  slab1Limit         Float    @default(100)
+  slab1Rate          Float    @default(4.75)
+  slab2Limit         Float    @default(300)
+  slab2Rate          Float    @default(6.50)
+  slab3Rate          Float    @default(8.25)
+  // Time of use details
+  peakRate           Float    @default(8.50)
+  offPeakRate        Float    @default(4.20)
+  peakStartHour      Int      @default(18) // 6 PM
+  peakEndHour        Int      @default(22) // 10 PM
+  isActive           Boolean  @default(true)
+  createdAt          DateTime @default(now())
+  updatedAt          DateTime @updatedAt
+
+  @@index([userId])
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String
+  message   String
+  type      String   @default("INFO") // "ALERT" | "RECOMMENDATION" | "SYSTEM" | "BUDGET"
+  link      String?
+  isRead    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId, isRead])
+}
+
+model AuditLog {
+  id          String   @id @default(uuid())
+  userId      String?
+  user        User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+  action      String   // e.g. "AUTH_LOGIN", "APPLIANCE_TOGGLED", "TARIFF_UPDATED"
+  entityType  String?
+  entityId    String?
+  detailsJson String?
+  ipAddress   String?
+  userAgent   String?
+  createdAt   DateTime @default(now())
+
+  @@index([userId])
+  @@index([action])
+}
